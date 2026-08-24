@@ -27,8 +27,11 @@ import {
   type VcsRef,
 } from "@t3tools/contracts";
 import { dedupeRemoteBranchesWithLocalMatches, normalizeGitRemoteUrl } from "@t3tools/shared/git";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { compactTraceAttributes } from "@t3tools/shared/observability";
 import { decodeJsonResult } from "@t3tools/shared/schemaJson";
+import { gitProcessEnvironment } from "../git/GitEnvironment.ts";
+import { normalizeGitPathForHost } from "../git/GitPath.ts";
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../observability/Metrics.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 import {
@@ -710,6 +713,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const { worktreesDir } = yield* ServerConfig;
   const crypto = yield* Crypto.Crypto;
+  const hostPlatform = yield* HostProcessPlatform;
 
   const executeRaw: GitVcsDriver.GitVcsDriver["Service"]["execute"] = Effect.fnUntraced(
     function* (input) {
@@ -738,11 +742,11 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           .spawn(
             ChildProcess.make("git", commandInput.args, {
               cwd: commandInput.cwd,
-              env: {
+              env: gitProcessEnvironment(commandInput.args, hostPlatform, {
                 ...process.env,
                 ...input.env,
                 ...trace2Monitor.env,
-              },
+              }),
             }),
           )
           .pipe(
@@ -1048,7 +1052,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       });
     }
 
-    const commonDirOutput = commonDirResult.stdout.trim();
+    const commonDirOutput = normalizeGitPathForHost(commonDirResult.stdout.trim(), hostPlatform);
     const resolvedGitCommonDir = path.isAbsolute(commonDirOutput)
       ? path.normalize(commonDirOutput)
       : path.resolve(cwd, commonDirOutput);
@@ -1078,7 +1082,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       ],
       { concurrency: 2 },
     );
-    const worktreeRootOutput = worktreeRootResult.stdout.trim();
+    const worktreeRootOutput = normalizeGitPathForHost(
+      worktreeRootResult.stdout.trim(),
+      hostPlatform,
+    );
     const worktreeRoot =
       worktreeRootResult.exitCode === 0 && worktreeRootOutput.length > 0
         ? path.normalize(
@@ -2408,7 +2415,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         "GitVcsDriver.getReviewDiffFileContents.repositoryRoot",
         input.cwd,
         ["rev-parse", "--show-toplevel"],
-      ).pipe(Effect.map((value) => value.trim()));
+      ).pipe(Effect.map((value) => normalizeGitPathForHost(value.trim(), hostPlatform)));
       if (repositoryRoot.length === 0) {
         return yield* reviewDiffFileError(input, "Could not resolve the Git repository root.");
       }
@@ -2523,8 +2530,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const parsedWorktreeEntries =
       worktreeListResult.exitCode === 0
         ? [...parseWorktreeBranchPaths(worktreeListResult.stdout)].map(
-            ([branchName, worktreePath]) =>
-              [branchName, path.normalize(path.resolve(worktreePath))] as const,
+            ([branchName, worktreePath]) => {
+              const hostPath = normalizeGitPathForHost(worktreePath, hostPlatform);
+              return [branchName, path.normalize(path.resolve(hostPath))] as const;
+            },
           )
         : [];
     const existingWorktreeEntries = yield* Effect.filter(

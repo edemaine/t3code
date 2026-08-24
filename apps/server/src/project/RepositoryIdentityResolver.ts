@@ -3,6 +3,7 @@ import {
   detectSourceControlProviderFromGitRemoteUrl,
   normalizeGitRemoteUrl,
 } from "@t3tools/shared/git";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -10,6 +11,8 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 
+import { gitProcessEnvironment } from "../git/GitEnvironment.ts";
+import { normalizeGitPathForHost } from "../git/GitPath.ts";
 import * as ProcessRunner from "../processRunner.ts";
 
 const DEFAULT_REPOSITORY_IDENTITY_CACHE_CAPACITY = 512;
@@ -90,6 +93,9 @@ function buildRepositoryIdentity(input: {
 const resolveRepositoryIdentityCacheKey = Effect.fn("RepositoryIdentityResolver.resolveCacheKey")(
   function* (cwd: string) {
     const processRunner = yield* ProcessRunner.ProcessRunner;
+    const hostPlatform = yield* HostProcessPlatform;
+    const args = ["-C", cwd, "rev-parse", "--show-toplevel"];
+    const env = gitProcessEnvironment(args, hostPlatform);
     let cacheKey = cwd;
 
     // git is a real executable on every platform — no cmd.exe shell mode, which
@@ -97,7 +103,8 @@ const resolveRepositoryIdentityCacheKey = Effect.fn("RepositoryIdentityResolver.
     const topLevelResult = yield* processRunner
       .run({
         command: "git",
-        args: ["-C", cwd, "rev-parse", "--show-toplevel"],
+        args,
+        ...(env === undefined ? {} : { env }),
         timeoutBehavior: "timedOutResult",
       })
       .pipe(Effect.option);
@@ -105,7 +112,7 @@ const resolveRepositoryIdentityCacheKey = Effect.fn("RepositoryIdentityResolver.
       return cacheKey;
     }
 
-    const candidate = topLevelResult.value.stdout.trim();
+    const candidate = normalizeGitPathForHost(topLevelResult.value.stdout.trim(), hostPlatform);
     if (candidate.length > 0) {
       cacheKey = candidate;
     }
@@ -120,10 +127,14 @@ const resolveRepositoryIdentityFromCacheKey = Effect.fn(
   cacheKey: string,
 ): Effect.fn.Return<RepositoryIdentity | null, never, ProcessRunner.ProcessRunner> {
   const processRunner = yield* ProcessRunner.ProcessRunner;
+  const hostPlatform = yield* HostProcessPlatform;
+  const args = ["-C", cacheKey, "remote", "-v"];
+  const env = gitProcessEnvironment(args, hostPlatform);
   const remoteResult = yield* processRunner
     .run({
       command: "git",
-      args: ["-C", cacheKey, "remote", "-v"],
+      args,
+      ...(env === undefined ? {} : { env }),
       timeoutBehavior: "timedOutResult",
     })
     .pipe(Effect.option);
