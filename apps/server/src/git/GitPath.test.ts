@@ -3,18 +3,19 @@ import { describe, expect, it } from "vite-plus/test";
 import { normalizeGitPathForHost } from "./GitPath.ts";
 
 describe("normalizeGitPathForHost", () => {
-  it("converts Git for Windows/MSYS2, Cygwin, and WSL drive paths on Windows", () => {
-    expect(normalizeGitPathForHost("/c/Users/example/repo", "win32")).toBe("C:/Users/example/repo");
+  it("converts Cygwin drive paths on Windows", () => {
     expect(normalizeGitPathForHost("/cygdrive/c/Users/example/repo", "win32")).toBe(
-      "C:/Users/example/repo",
-    );
-    expect(normalizeGitPathForHost("/mnt/c/Users/example/repo", "win32")).toBe(
       "C:/Users/example/repo",
     );
     expect(normalizeGitPathForHost("/cygdrive/d", "win32")).toBe("D:/");
   });
 
   it("leaves other paths unchanged", () => {
+    expect(normalizeGitPathForHost("/c/Users/example/repo", "win32")).toBe("/c/Users/example/repo");
+    expect(normalizeGitPathForHost("/d/project", "win32")).toBe("/d/project");
+    expect(normalizeGitPathForHost("/mnt/c/Users/example/repo", "win32")).toBe(
+      "/mnt/c/Users/example/repo",
+    );
     expect(normalizeGitPathForHost("C:/Users/example/repo", "win32")).toBe("C:/Users/example/repo");
     expect(normalizeGitPathForHost("C:\\Users\\example\\repo", "win32")).toBe(
       "C:\\Users\\example\\repo",
