@@ -215,6 +215,7 @@ function getSelectedTraits(
   };
 }
 
+/** Resolve a picker or shortcut selection; prompt-only changes omit modelOptions to preserve preferences. */
 function getTraitSelectChange(
   selected: ReturnType<typeof getSelectedTraits>,
   descriptor: Extract<ProviderOptionDescriptor, { type: "select" }>,

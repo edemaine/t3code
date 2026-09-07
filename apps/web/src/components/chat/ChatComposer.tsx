@@ -4563,7 +4563,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ),
       openModelPicker,
       adjustReasoningLevel: (direction) => {
-        if (noProviderAvailable) return;
+        if (noProviderAvailable || isComposerApprovalState || pendingUserInputs.length > 0) return;
         const change = getReasoningLevelChange({
           provider: selectedProvider,
           models: selectedProviderModels,
