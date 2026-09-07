@@ -101,10 +101,11 @@ function invalidRuntimePaths(electronDir, platformPath) {
   ].filter((runtimePath) => NodeFS.existsSync(runtimePath) && !isMachO(runtimePath));
 }
 
-function runChecked(command, args) {
+function runChecked(command, args, env) {
   const result = NodeChildProcess.spawnSync(command, args, {
     encoding: "utf8",
     stdio: "inherit",
+    env,
   });
 
   if (result.status === 0) {
@@ -131,13 +132,21 @@ function installElectronRuntime(electronDir, version) {
       runChecked("ditto", ["-x", "-k", zipPath, NodePath.join(electronDir, "dist")]);
     } else if (hostPlatform === "win32") {
       // Windows includes PowerShell, but python3 may only be a Microsoft Store alias.
-      const quote = (value) => `'${value.replaceAll("'", "''")}'`;
-      runChecked("powershell.exe", [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        `Expand-Archive -LiteralPath ${quote(zipPath)} -DestinationPath ${quote(NodePath.join(electronDir, "dist"))} -Force -ErrorAction Stop`,
-      ]);
+      // Pass paths as data: PowerShell also treats curly apostrophes as string delimiters.
+      runChecked(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "Expand-Archive -LiteralPath $env:T3_ELECTRON_ARCHIVE -DestinationPath $env:T3_ELECTRON_DESTINATION -Force -ErrorAction Stop",
+        ],
+        {
+          ...process.env,
+          T3_ELECTRON_ARCHIVE: zipPath,
+          T3_ELECTRON_DESTINATION: NodePath.join(electronDir, "dist"),
+        },
+      );
     } else {
       runChecked("python3", [
         "-c",
