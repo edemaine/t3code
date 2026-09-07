@@ -169,6 +169,7 @@ import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
+import { getReasoningLevelChange } from "./TraitsPicker";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
@@ -1124,6 +1125,7 @@ export interface ChatComposerHandle {
   openModelPicker: () => void;
   toggleModelPicker: () => void;
   isModelPickerOpen: () => boolean;
+  adjustReasoningLevel: (direction: 1 | -1) => void;
   compactContext: () => void;
   readSnapshot: () => {
     value: string;
@@ -4560,6 +4562,29 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           { ensureLeadingBoundary: true, citationCommentAnchor: sourceAnchor },
         ),
       openModelPicker,
+      adjustReasoningLevel: (direction) => {
+        if (noProviderAvailable) return;
+        const change = getReasoningLevelChange({
+          provider: selectedProvider,
+          models: selectedProviderModels,
+          model: selectedModel,
+          modelOptions: composerModelOptions?.[selectedInstanceId],
+          prompt: promptRef.current,
+          planModeEnabled: settings.planModeEnabled,
+          direction,
+        });
+        if (!change) return;
+        if ("modelOptions" in change) {
+          useComposerDraftStore
+            .getState()
+            .setProviderModelOptions(composerDraftTarget, selectedProvider, change.modelOptions, {
+              instanceId: selectedInstanceId,
+              model: selectedModel,
+              persistSticky: true,
+            });
+        }
+        if (change.prompt !== promptRef.current) setPromptFromTraits(change.prompt);
+      },
       toggleModelPicker: () => {
         if (isComposerModelPickerOpen) {
           setIsComposerModelPickerOpen(false);
@@ -4658,6 +4683,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       activeThread,
       addComposerAttachments,
       composerDraftTarget,
+      composerModelOptions,
       composerCursor,
       composerTerminalContexts,
       insertComposerDraftTerminalContext,
@@ -4680,6 +4706,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       isComposerModelPickerOpen,
       openModelPicker,
       readComposerSnapshot,
+      selectedInstanceId,
       selectedModel,
       selectedModelOptionsForDispatch,
       selectedModelSelection,
@@ -4688,6 +4715,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       selectedPromptEffort,
       selectedProvider,
       selectedProviderModels,
+      setPromptFromTraits,
+      settings.planModeEnabled,
       interactionMode,
       planModeUiEnabled,
       compactThreadContext,

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ProviderDriverKind, type ProviderOptionDescriptor } from "@t3tools/contracts";
-import { buildTraitsTriggerDisplay, buildUnavailableModelOptionDescriptors } from "./TraitsPicker";
+import {
+  ProviderDriverKind,
+  type ProviderOptionDescriptor,
+  type ServerProviderModel,
+} from "@t3tools/contracts";
+import {
+  getReasoningLevelChange,
+  buildTraitsTriggerDisplay,
+  buildUnavailableModelOptionDescriptors,
+} from "./TraitsPicker";
 
 function selectDescriptor(
   id: string,
@@ -186,5 +194,108 @@ describe("buildUnavailableModelOptionDescriptors", () => {
         currentValue: true,
       },
     ]);
+  });
+});
+
+describe("reasoning level shortcuts", () => {
+  const modelWith = (
+    descriptors: ReadonlyArray<ProviderOptionDescriptor>,
+  ): ReadonlyArray<ServerProviderModel> => [
+    {
+      slug: "test-model",
+      name: "Test",
+      isCustom: false,
+      capabilities: { optionDescriptors: descriptors },
+    },
+  ];
+  const options = [
+    { id: "low", label: "Low" },
+    { id: "high", label: "High", isDefault: true },
+    { id: "ultrathink", label: "Ultrathink" },
+  ];
+  const input = {
+    provider: CODEX,
+    model: "test-model",
+    models: modelWith([
+      { ...selectDescriptor("effort", options, "high"), promptInjectedValues: ["ultrathink"] },
+      fastModeDescriptor(false),
+    ]),
+    modelOptions: [{ id: "fastMode", value: true }],
+    prompt: "Solve this",
+    planModeEnabled: false,
+    direction: -1 as const,
+  };
+
+  it("steps from the default, skips unsupported levels, and preserves other traits", () => {
+    expect(
+      getReasoningLevelChange({
+        ...input,
+        models: modelWith([
+          { id: "effort", label: "Effort", type: "select", options },
+          fastModeDescriptor(false),
+        ]),
+      }),
+    ).toEqual({
+      prompt: "Solve this",
+      modelOptions: [
+        { id: "effort", value: "low" },
+        { id: "fastMode", value: true },
+      ],
+    });
+  });
+
+  it("stops at both ends", () => {
+    expect(
+      getReasoningLevelChange({ ...input, modelOptions: [{ id: "effort", value: "low" }] }),
+    ).toBeNull();
+    expect(
+      getReasoningLevelChange({ ...input, prompt: "Ultrathink:\nSolve this", direction: 1 }),
+    ).toBeNull();
+  });
+
+  it("enters and leaves prompt-controlled ultrathink", () => {
+    const increased = getReasoningLevelChange({ ...input, direction: 1 });
+    expect(increased).toEqual({ prompt: "Ultrathink:\nSolve this" });
+    expect(getReasoningLevelChange({ ...input, prompt: increased!.prompt })).toEqual({
+      prompt: "Solve this",
+      modelOptions: [
+        { id: "effort", value: "high" },
+        { id: "fastMode", value: true },
+      ],
+    });
+    expect(
+      getReasoningLevelChange({ ...input, prompt: "Please ultrathink about this" }),
+    ).toBeNull();
+  });
+
+  it("changes only the prompt when enabling ultrathink, and preserves slash commands", () => {
+    expect(getReasoningLevelChange({ ...input, prompt: "", direction: 1 })).toEqual({
+      prompt: "Ultrathink:\n",
+    });
+    expect(getReasoningLevelChange({ ...input, prompt: "/review", direction: 1 })).toEqual({
+      prompt: "/review",
+    });
+  });
+
+  it.each(["reasoningEffort", "effort", "variant"])("supports the %s descriptor", (id) => {
+    expect(
+      getReasoningLevelChange({
+        ...input,
+        models: modelWith([selectDescriptor(id, options, "high")]),
+      })?.modelOptions,
+    ).toEqual([{ id, value: "low" }]);
+  });
+
+  it.each(["agent", "contextWindow"])("does not step through %s options", (id) => {
+    expect(
+      getReasoningLevelChange({
+        ...input,
+        models: modelWith([selectDescriptor(id, options, "high")]),
+      }),
+    ).toBeNull();
+  });
+
+  it("does nothing when the model is unavailable", () => {
+    expect(getReasoningLevelChange({ ...input, models: [] })).toBeNull();
   });
 });

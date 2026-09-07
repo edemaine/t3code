@@ -6047,6 +6047,13 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
 
+      if (command === "reasoning.increase" || command === "reasoning.decrease") {
+        event.preventDefault();
+        event.stopPropagation();
+        composerRef.current?.adjustReasoningLevel(command === "reasoning.increase" ? 1 : -1);
+        return;
+      }
+
       const scriptId = projectScriptIdFromCommand(command);
       if (!scriptId || !activeProject) return;
       const script = activeProjectScripts.find((entry) => entry.id === scriptId);
