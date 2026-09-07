@@ -129,6 +129,15 @@ function installElectronRuntime(electronDir, version) {
     ]);
     if (hostPlatform === "darwin") {
       runChecked("ditto", ["-x", "-k", zipPath, NodePath.join(electronDir, "dist")]);
+    } else if (hostPlatform === "win32") {
+      // Windows includes PowerShell, but python3 may only be a Microsoft Store alias.
+      const quote = (value) => `'${value.replaceAll("'", "''")}'`;
+      runChecked("powershell.exe", [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `Expand-Archive -LiteralPath ${quote(zipPath)} -DestinationPath ${quote(NodePath.join(electronDir, "dist"))} -Force -ErrorAction Stop`,
+      ]);
     } else {
       runChecked("python3", [
         "-c",
